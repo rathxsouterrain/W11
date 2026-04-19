@@ -1,13 +1,10 @@
 # .github/workflows/windows.yml
 name: Windows 11 VM - RDP Fixed
-
 on:
   workflow_dispatch:
-
 jobs:
   vm:
-    runs-on: ubuntu-latest
-    
+    runs-on: ubuntu-latest-4core
     steps:
       - uses: actions/checkout@v4
 
