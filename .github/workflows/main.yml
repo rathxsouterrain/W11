@@ -23,7 +23,7 @@ jobs:
             --privileged \
             -p 8006:8006 \
             -p 3389:3389 \
-            -e VERSION="tiny11" \
+            -e VERSION="win11" \
             -e USERNAME="MASTER" \
             -e PASSWORD="admin@123" \
             -e RAM_SIZE="7G" \
