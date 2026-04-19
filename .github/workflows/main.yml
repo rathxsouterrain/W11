@@ -11,29 +11,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Debug Secrets
-        run: |
-          if [ -z "${{ secrets.TAILSCALE_CLIENT_ID }}" ]; then
-            echo "::error::TAILSCALE_CLIENT_ID kosong!"
-            exit 1
-          else
-            echo "✓ TAILSCALE_CLIENT_ID ada"
-          fi
-          
-          if [ -z "${{ secrets.TAILSCALE_SECRET }}" ]; then
-            echo "::error::TAILSCALE_SECRET kosong!"
-            exit 1
-          else
-            echo "✓ TAILSCALE_SECRET ada"
-          fi
-
       - name: Connect Tailscale
-        uses: tailscale/github-action@v3  # ← v3 lebih stabil
+        uses: tailscale/github-action@v3
         with:
-          oauth-client-id: ${{ secrets.TAILSCALE_CLIENT_ID }}
-          oauth-secret: ${{ secrets.TAILSCALE_SECRET }}
-          tags: tag:github-actions
-          version: latest
+          authkey: ${{ secrets.TAILSCALE_AUTHKEY }}  # ← Cuma 1 ini
 
       - name: Setup Docker
         uses: docker/setup-buildx-action@v3
@@ -54,30 +35,25 @@ jobs:
             -v /tmp/windows:/storage \
             dockurr/windows
 
-      - name: Wait & Check Logs
+      - name: Tunggu Boot & Info
         run: |
-          echo "Menunggu Windows boot (5 menit)..."
           sleep 300
-          docker logs windows | tail -30
-
-      - name: Show Connection Info
-        run: |
-          TAILSCALE_IP=$(tailscale ip -4)
+          docker logs windows | tail -20
+          
+          IP=$(tailscale ip -4)
           echo "=================================="
           echo "🖥️ Windows VM Ready!"
-          echo "Web UI: http://${TAILSCALE_IP}:8006"
-          echo "RDP: ${TAILSCALE_IP}:3389"
+          echo "Web UI: http://$IP:8006"
+          echo "RDP: $IP:3389"
           echo "User: MASTER"
           echo "Pass: admin@123"
           echo "=================================="
 
-      - name: Keep Alive (6 jam max)
+      - name: Keep Alive
         run: |
-          for i in {1..72}; do  # 72 x 5 menit = 6 jam
-            if ! docker ps | grep -q windows; then
-              echo "Container mati!"
-              exit 1
-            fi
-            echo "[$i/72] Still running: $(date)"
+          while true; do
+            docker ps | grep -q windows || exit 1
+            echo "Alive: $(date)"
             sleep 300
           done
+
