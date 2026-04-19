@@ -1,0 +1,72 @@
+# .github/workflows/windows.yml
+name: Windows 11 VM - Infinite
+
+on:
+  workflow_dispatch:
+
+jobs:
+  vm:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Connect Tailscale
+        uses: tailscale/github-action@v2
+        with:
+          oauth-client-id: ${{ secrets.TAILSCALE_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TAILSCALE_SECRET }}
+          tags: tag:github-actions
+
+      - name: Setup & Run Windows
+        run: |
+          sudo apt update && sudo apt install -y docker-compose
+          
+          mkdir -p ~/dockercom && cd ~/dockercom
+          
+          cat > docker-compose.yml <<'EOF'
+          version: "3.9"
+          services:
+            windows:
+              image: dockurr/windows
+              container_name: windows
+              privileged: true
+              environment:
+                VERSION: "11"
+                USERNAME: "MASTER"
+                PASSWORD: "admin@123"
+                RAM_SIZE: "4G"
+                CPU_CORES: "2"
+              ports:
+                - "8006:8006"
+                - "3389:3389"
+              volumes:
+                - /tmp/windows:/storage
+              devices:
+                - /dev/kvm
+              restart: always
+          EOF
+          
+          sudo docker-compose up -d
+          sleep 120
+
+      - name: Show Connection Info
+        run: |
+          IP=$(tailscale ip -4)
+          echo "::notice::Windows VM Ready!"
+          echo "::notice::Web UI: http://${IP}:8006"
+          echo "::notice::RDP: ${IP}:3389"
+          echo "::notice::User: MASTER | Pass: admin@123"
+
+      - name: Keep Running Forever
+        run: |
+          while true; do
+            # Cek container masih hidup
+            if ! sudo docker ps | grep -q windows; then
+              echo "Container mati, restart..."
+              cd ~/dockercom && sudo docker-compose up -d
+            fi
+            # Heartbeat ke GitHub (penting agar tidak timeout)
+            echo "Still alive: $(date)"
+            sleep 300  # 5 menit
+          done
