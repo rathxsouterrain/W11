@@ -1,5 +1,5 @@
 # .github/workflows/windows.yml
-name: Windows 11 VM - RDP Ready
+name: Windows 11 VM - RDP Lengkap
 
 on:
   workflow_dispatch:
@@ -16,17 +16,13 @@ jobs:
         with:
           authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
 
-      - name: Setup IP Forwarding
-        run: |
-          sudo sysctl -w net.ipv4.ip_forward=1
-          sudo sysctl -w net.ipv6.conf.all.forwarding=1
-
-      - name: Run Windows dengan Network Host
+      - name: Run Windows
         run: |
           docker run -d \
             --name windows \
             --privileged \
-            --network host \
+            -p 8006:8006 \
+            -p 3389:3389 \
             -e VERSION="tiny11" \
             -e USERNAME="MASTER" \
             -e PASSWORD="admin@123" \
@@ -38,60 +34,50 @@ jobs:
 
       - name: Tunggu Windows Boot
         run: |
-          echo "Menunggu Windows siap (5 menit)..."
-          for i in {1..30}; do
-            sleep 10
-            if docker logs windows 2>&1 | grep -q "Windows started"; then
-              echo "✅ Windows sudah ready!"
-              break
-            fi
-            echo "[$i/30] Masih booting..."
-          done
+          echo "Menunggu Windows siap (6 menit)..."
+          sleep 360
 
-      - name: Setup Tailscale Funnel untuk RDP
+      - name: Enable RDP di Windows
+        run: |
+          docker exec windows cmd /c "reg add \"HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Terminal Server\" /v fDenyTSConnections /t REG_DWORD /d 0 /f" || true
+          docker exec windows cmd /c "netsh advfirewall firewall set rule group=\"remote desktop\" new enable=Yes" || true
+          docker exec windows cmd /c "net start termservice" || true
+          sleep 10
+
+      - name: Info Koneksi
         run: |
           IP=$(tailscale ip -4)
-          echo "Tailscale IP: $IP"
-          
-          # Expose port 3389 via tailscale
-          sudo tailscale funnel --bg tcp://localhost:3389
-          
           echo "=================================="
           echo "🖥️ WINDOWS VM READY"
           echo "=================================="
-          echo "Web UI    : http://$IP:8006"
-          echo "RDP Host  : $IP"
-          echo "RDP Port  : 3389"
-          echo "Username  : MASTER"
-          echo "Password  : admin@123"
+          echo "Tailscale IP: $IP"
+          echo ""
+          echo "CARA KONEK RDP:"
+          echo "1. Pastikan komputer kamu install Tailscale"
+          echo "2. Login Tailscale dengan akun yang sama"
+          echo "3. Buka Windows App / Remote Desktop"
+          echo "4. Masukkan: $IP:3389"
+          echo ""
+          echo "Username: MASTER"
+          echo "Password: admin@123"
           echo "=================================="
-          
-          # Simpan ke file
-          echo "$IP:3389 - MASTER / admin@123" > rdp-info.txt
-          cat rdp-info.txt
 
-      - name: Cek Status RDP
+      - name: Cek Port RDP
         run: |
-          echo "=== Cek Port 3389 ==="
-          sudo netstat -tlnp | grep 3389 || echo "Port belum listen"
-          
+          echo "=== Cek dari dalam container ==="
+          docker exec windows netstat -an 2>/dev/null | grep 3389 || echo "RDP belum siap"
           echo ""
-          echo "=== Cek Container ==="
-          docker ps
-          
-          echo ""
-          echo "=== Log Terakhir ==="
-          docker logs --tail 20 windows
+          echo "=== Cek dari host ==="
+          sudo apt install -y netcat
+          nc -zv 127.0.0.1 3389 || echo "Port 3389 tidak terbuka di host"
 
-      - name: Keep Alive 6 Jam
+      - name: Keep Alive
         run: |
-          for i in {1..72}; do
-            if ! docker ps | grep -q windows; then
-              echo "❌ Container mati!"
-              exit 1
-            fi
-            echo "[$i/72] $(date) - IP: $(tailscale ip -4)"
+          while true; do
+            docker ps | grep -q windows || exit 1
+            echo "Running: $(date) - $(tailscale ip -4)"
             sleep 300
           done
+
 
 
