@@ -1,5 +1,5 @@
 # .github/workflows/windows.yml
-name: Windows 11 VM
+name: Windows 11 VM - RDP Ready
 
 on:
   workflow_dispatch:
@@ -14,19 +14,20 @@ jobs:
       - name: Connect Tailscale
         uses: tailscale/github-action@v3
         with:
-          authkey: ${{ secrets.TAILSCALE_AUTHKEY }}  # ← Cuma 1 ini
+          authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
 
-      - name: Setup Docker
-        uses: docker/setup-buildx-action@v3
+      - name: Setup IP Forwarding
+        run: |
+          sudo sysctl -w net.ipv4.ip_forward=1
+          sudo sysctl -w net.ipv6.conf.all.forwarding=1
 
-      - name: Run Windows (No KVM)
+      - name: Run Windows dengan Network Host
         run: |
           docker run -d \
             --name windows \
             --privileged \
-            -p 8006:8006 \
-            -p 3389:3389 \
-            -e VERSION="11" \
+            --network host \
+            -e VERSION="tiny11" \
             -e USERNAME="MASTER" \
             -e PASSWORD="admin@123" \
             -e RAM_SIZE="8G" \
@@ -35,25 +36,62 @@ jobs:
             -v /tmp/windows:/storage \
             dockurr/windows
 
-      - name: Tunggu Boot & Info
+      - name: Tunggu Windows Boot
         run: |
-          sleep 300
-          docker logs windows | tail -20
-          
-          IP=$(tailscale ip -4)
-          echo "=================================="
-          echo "🖥️ Windows VM Ready!"
-          echo "Web UI: http://$IP:8006"
-          echo "RDP: $IP:3389"
-          echo "User: MASTER"
-          echo "Pass: admin@123"
-          echo "=================================="
+          echo "Menunggu Windows siap (5 menit)..."
+          for i in {1..30}; do
+            sleep 10
+            if docker logs windows 2>&1 | grep -q "Windows started"; then
+              echo "✅ Windows sudah ready!"
+              break
+            fi
+            echo "[$i/30] Masih booting..."
+          done
 
-      - name: Keep Alive
+      - name: Setup Tailscale Funnel untuk RDP
         run: |
-          while true; do
-            docker ps | grep -q windows || exit 1
-            echo "Alive: $(date)"
+          IP=$(tailscale ip -4)
+          echo "Tailscale IP: $IP"
+          
+          # Expose port 3389 via tailscale
+          sudo tailscale funnel --bg tcp://localhost:3389
+          
+          echo "=================================="
+          echo "🖥️ WINDOWS VM READY"
+          echo "=================================="
+          echo "Web UI    : http://$IP:8006"
+          echo "RDP Host  : $IP"
+          echo "RDP Port  : 3389"
+          echo "Username  : MASTER"
+          echo "Password  : admin@123"
+          echo "=================================="
+          
+          # Simpan ke file
+          echo "$IP:3389 - MASTER / admin@123" > rdp-info.txt
+          cat rdp-info.txt
+
+      - name: Cek Status RDP
+        run: |
+          echo "=== Cek Port 3389 ==="
+          sudo netstat -tlnp | grep 3389 || echo "Port belum listen"
+          
+          echo ""
+          echo "=== Cek Container ==="
+          docker ps
+          
+          echo ""
+          echo "=== Log Terakhir ==="
+          docker logs --tail 20 windows
+
+      - name: Keep Alive 6 Jam
+        run: |
+          for i in {1..72}; do
+            if ! docker ps | grep -q windows; then
+              echo "❌ Container mati!"
+              exit 1
+            fi
+            echo "[$i/72] $(date) - IP: $(tailscale ip -4)"
             sleep 300
           done
+
 
