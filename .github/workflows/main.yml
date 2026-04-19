@@ -26,7 +26,7 @@ jobs:
             -e VERSION="tiny11" \
             -e USERNAME="MASTER" \
             -e PASSWORD="admin@123" \
-            -e RAM_SIZE="8G" \
+            -e RAM_SIZE="7G" \
             -e CPU_CORES="4" \
             -e KVM="N" \
             -v /tmp/windows:/storage \
@@ -34,8 +34,8 @@ jobs:
 
       - name: Tunggu Windows Boot
         run: |
-          echo "Menunggu Windows siap (6 menit)..."
-          sleep 360
+          echo "Menunggu Windows siap (60 detik)..."
+          sleep 60
 
       - name: Fix RDP - Disable Firewall & Enable RDP
         run: |
