@@ -1,85 +1,104 @@
-#.github/workflows/windows.yml
+# .github/workflows/windows.yml
 name: Windows 11 VM - RDP Fixed
+
 on:
-workflow_dispatch:
+  workflow_dispatch:
+
 jobs:
-vm:
-runs-on: ubuntu-latest
-steps:
-•  uses: actions/checkout@v4
-•  name: Connect Tailscale
-uses: tailscale/github-action@v4
-with:
-authkey: {{ secrets.TAILSCALE_AUTHKEY }}
-•  name: Run Windows
-run: |
-docker run -d 
---name windows 
---privileged 
--p 8006:8006 
--p 3389:3389 
--e VERSION="tiny11" 
--e USERNAME="MASTER" 
--e PASSWORD="admin@123" 
--e RAM_SIZE="7G" 
--e CPU_CORES="4" 
--e KVM="N" 
--v /tmp/windows:/storage 
-dockurr/windows
-•  name: Tunggu Windows Boot
-run: |
-echo "Menunggu Windows siap (60 detik)..."
-sleep 60
-•  name: Fix RDP - Disable Firewall & Enable RDP
-run: |
-echo "=== Matikan Firewall Windows ==="
-docker exec windows cmd /c "netsh advfirewall set allprofiles state off" || true
-echo "=== Enable RDP ==="
-docker exec windows cmd /c "reg add "HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Terminal Server" /v fDenyTSConnections /t REG_DWORD /d 0 /f" || true
-echo "=== Start RDP Service ==="
-docker exec windows cmd /c "net start termservice" || true
-echo "=== Set RDP ke port 3389 ==="
-docker exec windows cmd /c "reg add "HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp" /v PortNumber /t REG_DWORD /d 3389 /f" || true
-echo "=== Restart RDP Service ==="
-docker exec windows cmd /c "net stop termservice && net start termservice" || true
-sleep 10
-•  name: Cek RDP Status
-run: |
-echo "=== Cek Port 3389 ==="
-docker exec windows netstat -an | grep 3389 || echo "Port 3389 tidak ditemukan"
-echo ""
-echo "=== Cek RDP Service ==="
-docker exec windows sc query termservice || true
-echo ""
-echo "=== Cek Firewall Status ==="
-docker exec windows cmd /c "netsh advfirewall show allprofiles" || true
-•  name: Info Koneksi
-run: |
-IP=(tailscale ip -4)
-echo "=================================="
-echo "🖥️ WINDOWS VM READY"
-echo "=================================="
-echo "Tailscale IP: $IP"
-echo ""
-echo "CARA KONEK RDP:"
-echo "1. Pastikan komputer kamu install Tailscale"
-echo "2. Login Tailscale dengan akun yang sama"
-echo "3. Buka Windows App / Remote Desktop"
-echo "4. Masukkan: IP:3389"
-echo ""
-echo "Username: MASTER"
-echo "Password: admin@123"
-echo "=================================="
-echo "IP:3389 - MASTER / admin@123" > rdp-info.txt
-•  name: Upload Connection Info
-uses: actions/upload-artifact@v4
-with:
-name: rdp-connection
-path: rdp-info.txt
-•  name: Keep Alive
-run: |
-while true; do
-docker ps | grep -q windows || exit 1
-echo "Running: $(date) - $(tailscale ip -4)"
-sleep 300
-done
+  vm:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Connect Tailscale
+        uses: tailscale/github-action@v4
+        with:
+          authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
+
+      - name: Run Windows
+        run: |
+          docker run -d \
+            --name windows \
+            --privileged \
+            -p 8006:8006 \
+            -p 3389:3389 \
+            -e VERSION="tiny11" \
+            -e USERNAME="MASTER" \
+            -e PASSWORD="admin@123" \
+            -e RAM_SIZE="7G" \
+            -e CPU_CORES="4" \
+            -e KVM="N" \
+            -v /tmp/windows:/storage \
+            dockurr/windows
+
+      - name: Tunggu Windows Boot
+        run: |
+          echo "Menunggu Windows siap (60 detik)..."
+          sleep 60
+
+      - name: Fix RDP - Disable Firewall & Enable RDP
+        run: |
+          echo "=== Matikan Firewall Windows ==="
+          docker exec windows cmd /c "netsh advfirewall set allprofiles state off" || true
+          
+          echo "=== Enable RDP ==="
+          docker exec windows cmd /c "reg add \"HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Terminal Server\" /v fDenyTSConnections /t REG_DWORD /d 0 /f" || true
+          
+          echo "=== Start RDP Service ==="
+          docker exec windows cmd /c "net start termservice" || true
+          
+          echo "=== Set RDP ke port 3389 ==="
+          docker exec windows cmd /c "reg add \"HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp\" /v PortNumber /t REG_DWORD /d 3389 /f" || true
+          
+          echo "=== Restart RDP Service ==="
+          docker exec windows cmd /c "net stop termservice && net start termservice" || true
+          
+          sleep 10
+
+      - name: Cek RDP Status
+        run: |
+          echo "=== Cek Port 3389 ==="
+          docker exec windows netstat -an | grep 3389 || echo "Port 3389 tidak ditemukan"
+          
+          echo ""
+          echo "=== Cek RDP Service ==="
+          docker exec windows sc query termservice || true
+          
+          echo ""
+          echo "=== Cek Firewall Status ==="
+          docker exec windows cmd /c "netsh advfirewall show allprofiles" || true
+
+      - name: Info Koneksi
+        run: |
+          IP=$(tailscale ip -4)
+          echo "=================================="
+          echo "🖥️ WINDOWS VM READY"
+          echo "=================================="
+          echo "Tailscale IP: $IP"
+          echo ""
+          echo "CARA KONEK RDP:"
+          echo "1. Pastikan komputer kamu install Tailscale"
+          echo "2. Login Tailscale dengan akun yang sama"
+          echo "3. Buka Windows App / Remote Desktop"
+          echo "4. Masukkan: $IP:3389"
+          echo ""
+          echo "Username: MASTER"
+          echo "Password: admin@123"
+          echo "=================================="
+          
+          echo "$IP:3389 - MASTER / admin@123" > rdp-info.txt
+
+      - name: Upload Connection Info
+        uses: actions/upload-artifact@v4
+        with:
+          name: rdp-connection
+          path: rdp-info.txt
+
+      - name: Keep Alive
+        run: |
+          while true; do
+            docker ps | grep -q windows || exit 1
+            echo "Running: $(date) - $(tailscale ip -4)"
+            sleep 300
+          done
